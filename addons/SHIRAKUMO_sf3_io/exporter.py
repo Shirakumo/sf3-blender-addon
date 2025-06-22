@@ -47,7 +47,7 @@ def export_model(file, obj, config):
     faces = []
     vertex_type = 1
     material_type = 0
-    mesh = obj.data.meshes[0]
+    mesh = obj.data
     mesh.calc_loop_triangles()
     vertex_attributes = []
 
@@ -161,7 +161,7 @@ class ExportSF3(Operator, ExportHelper):
     bl_idname = 'export_scene.sf3'
     bl_label = 'Export SF3'
     
-    filename_ext = 'sf3'
+    filename_ext = '.sf3'
     filter_glob: bpy.props.StringProperty(default='*.sf3', options={'HIDDEN'})
 
     image_type: bpy.props.EnumProperty(
@@ -221,7 +221,7 @@ class ExportSF3(Operator, ExportHelper):
             'export_normals': self.export_normals,
             'export_tangents': self.export_tangents,
         }
-        return export_model(self.filepath, config)
+        return export_model(self.filepath, context.object, config)
 
 def menu_func_export(self, context):
     self.layout.operator(ExportSF3.bl_idname, text='Simple File Format Family (.sf3)')
