@@ -1,15 +1,99 @@
 import bpy
 import bmesh
 import os
+import tempfile
+import mimetypes
 from pathlib import Path
 from bpy.types import Operator
 from bpy_extras.io_utils import ImportHelper
 from .sf3.sf3_model import Sf3Model
+from .sf3.sf3_archive import Sf3Archive
+from .sf3.sf3_image import Sf3Image
 
-def import_model(file, config):
-    print("Importing "+file)
+def path_index(path, archive):
+    for i in range(0, len(archive.meta_entries)):
+        if path == archive.meta_entries[i].path.value:
+            return i
+    return None
+
+def archive_file(file, archive):
+    i = file
+    if isinstance(file, str):
+        i = path_index(file, source)
+    if i is None:
+        raise Exception("File not found in archive: "+file)
+    return (archive.file_payloads[i].value,
+            archive.meta_entries[i].mime.value,
+            archive.meta_entries[i].path.value)
+
+def import_file(file, config={}, source=None):
+    if source is None:
+        try:
+            return import_archive(file, config)
+        except:
+            pass
+        try:
+            return imort_model(file, config)
+        except:
+            pass
+        try:
+            return import_image(file, config)
+        except:
+            pass
+        try:
+            return bpy.data.images.load(file, check_existing=True)
+        except:
+            pass
+        raise Exception("Failed to import, does not appear to be a valid file: "+file)
+    elif isinstance(source, Sf3Archive.Archive):
+        (octs, type, file) = archive_file(file, source)
+        # We can't load images from octets, so write them to disk... yay.
+        # Also this simplifies the parsing logic since everything goes
+        # through files.
+        ext = mimetypes.guess_extension(type)
+        if type in ["image/x.sf3", "model/x.sf3", "application/x.sf3-archive"]:
+            ext = ".sf3"
+        elif ext is None:
+            ext = ".dat"
+        with tempfile.NamedTemporaryFile(prefix=os.path.basename(file), suffix=ext) as fp:
+            fp.write(octs)
+            fp.close()
+            return import_file(fp.name, config)
+    else:
+        raise Exception("Unknown source type: "+type(source))
+
+def import_image(file, config={}):
+    print("Importing image "+file)
+    image = Sf3Image.from_file(file).image
+
+    if image.channel_format in [68, 84]:
+        raise Exception("Unsupported image channel layout: "+image.channel_format)
+    if image.format in [34]:
+        raise Exception("Unsupported image pixel format: "+image.format)
+
+    img = bpy.data.images.new(file, image.width, image.height,
+                              alpha=(image.channel_format & 4 == 4 or image.channel_format & 2 == 2),
+                              float_buffer=(image.format & 32 == 32))
+    pixels = [0.0] * (image.width * image.height * image.channels)
+    for p in range(0, image.width * image.height):
+        pass
+    img.pixels = pixels
+    return img
+
+def import_archive(file, config={}):
+    print("Importing archive "+file)
+    archive = Sf3Archive.from_file(file).archive
+    models = []
+    for i in range(0, len(archive.meta_entries)):
+        if archive.meta_entries[i].mime.value == ["model/x.sf3"]:
+            models.append(import_file(i, config, archive))
+    return models
+
+def import_model(file, config={}, name=None, source=None):
+    print("Importing model "+file)
     dir = os.path.dirname(file)
-    name = Path(file).stem
+    if name is None:
+        name = Path(file).stem
     mod = Sf3Model.from_file(file).model
     mesh = bpy.data.meshes.new(name)
     obj = bpy.data.objects.new(name, mesh)
@@ -61,7 +145,7 @@ def import_model(file, config):
         offset = 0
         def load_texture(texname):
             texpath = os.path.join(dir, mod.material.textures[offset].value)
-            img = bpy.data.images.load(texpath, check_existing=True)
+            img = import_image(texpath, config, source)
             tex = mat.node_tree.nodes.new('ShaderNodeTexImage')
             tex.image = img
             return tex
@@ -108,8 +192,7 @@ def import_model(file, config):
             tex = load_texture('emission')
             mat.node_tree.links.new(bsdf.inputs['Emission Color'], tex.outputs['Color'])
             offset += 1
-        
-    return {'FINISHED'}
+    return obj
 
 class ImportSF3(Operator, ImportHelper):
     bl_idname = 'import_scene.sf3'
@@ -142,11 +225,12 @@ class ImportSF3(Operator, ImportHelper):
             dirname = os.path.dirname(self.filepath)
             for file in self.files:
                 path = os.path.join(dirname, file.name)
-                if import_model(path, import_settings) == {'FINISHED'}:
-                    ret = {'FINISHED'}
+                import_model(path, import_settings)
+                ret = {'FINISHED'}
             return ret
         else:
-            return import_model(self.filepath, import_settings)
+            return import_file(self.filepath, import_settings)
+        return {'FINISHED'}
 
 def menu_func_import(self, context):
     self.layout.operator(ImportSF3.bl_idname, text='Simple File Format Family (.sf3)')
