@@ -5,7 +5,7 @@ from . import importer
 
 bl_info = {
     "name": "SHIRAKUMO_sf3_io",
-    "version": (0, 0, 1),
+    "version": (1, 0, 0),
     "blender": (4, 2, 0),
     "isDraft": True,
     "developer": "Yukari Hafner",
