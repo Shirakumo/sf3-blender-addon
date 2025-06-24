@@ -42,6 +42,21 @@ def flatten_vertex_attributes(vertex_attributes, vert_count):
                 vertices.append(a[v])
     return vertices
 
+def deduplicate_vertices(vertices, stride):
+    print(stride)
+    set = {}
+    out_indices = []
+    out_vertices = []
+    for i in range(0, len(vertices), stride):
+        vertex = tuple(vertices[i:i+stride])
+        index = set.get(vertex)
+        if index is None:
+            index = len(set)
+            set[vertex] = index
+            out_vertices.extend(vertex)
+        out_indices.append(index)
+    return (out_vertices, out_indices)
+
 def export_model(file, obj, config):
     print("Exporting to "+file)
     dir = os.path.dirname(file)
@@ -87,9 +102,8 @@ def export_model(file, obj, config):
         mesh.loops.foreach_get('tangent', tangents)
         vertex_attributes.append(zup2yup(tangents))
 
-    ## TODO: deduplicate vertices
-
     vertices = flatten_vertex_attributes(vertex_attributes, len(indices))
+    (vertices, indices) = deduplicate_vertices(vertices, len(vertices)//len(indices))
 
     if 0 < len(obj.data.materials):
         def try_add(tex_node, bit):
