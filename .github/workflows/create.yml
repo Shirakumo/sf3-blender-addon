@@ -1,0 +1,29 @@
+name: Build Release
+on: [create, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
+      - name: Build ZIP files
+        run: |
+          cd $GITHUB_WORKSPACE/addons/
+          cp ../LICENSE */
+          zip -r $GITHUB_WORKSPACE/SHIRAKUMO_sf3_io.zip SHIRAKUMO_sf3_io
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trial-blender-addons
+          path: |
+            SHIRAKUMO_sf3_io.zip
+      - name: Create release
+        id: create_release
+        uses: ncipollo/release-action@v1
+        continue-on-error: true
+        with:
+          allowUpdates: true
+          name: Release ${{ github.ref_name }}
+          artifacts: |
+            SHIRAKUMO_sf3_io.zip
