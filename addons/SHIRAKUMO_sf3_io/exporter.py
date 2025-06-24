@@ -80,30 +80,35 @@ def export_model(file, obj, config):
         vertices.append(vertex[2])
     vertices = zup2yup(vertices)
     vertex_attributes.append(vertices)
+    stride = 3
 
     if 0 < len(mesh.uv_layers) and config['export_uvs']:
         vertex_type = vertex_type | 2
         uvs = [0.0] * (len(mesh.loops)*2)
         mesh.uv_layers[0].uv.foreach_get('vector', uvs)
         vertex_attributes.append(uvs)
+        stride += 2
     if 0 < len(mesh.color_attributes) and config['export_colors']:
         vertex_type = vertex_type | 4
         colors = [0.0] * (len(mesh.loops)*3)
         mesh.color_attributes[0].data.foreach_get('color', colors)
         vertex_attributes.append(colors)
+        stride += 3
     if config['export_normals']:
         vertex_type = vertex_type | 8
         normals = [0.0] * (len(mesh.loops)*3)
         mesh.corner_normals.foreach_get('vector', normals)
         vertex_attributes.append(zup2yup(normals))
+        stride += 3
     if config['export_tangents']:
         vertex_type = vertex_type | 16
         tangents = [0.0] * (len(mesh.loops)*3)
         mesh.loops.foreach_get('tangent', tangents)
         vertex_attributes.append(zup2yup(tangents))
+        stride += 3
 
     vertices = flatten_vertex_attributes(vertex_attributes, len(indices))
-    (vertices, indices) = deduplicate_vertices(vertices, len(vertices)//len(indices))
+    (vertices, indices) = deduplicate_vertices(vertices, stride)
 
     if 0 < len(obj.data.materials):
         def try_add(tex_node, bit):
@@ -224,8 +229,10 @@ class ExportSF3(Operator, ExportHelper):
         header, body = layout.panel('SF3_export_data', default_closed=False)
         header.label(text='Data')
         if body:
+            body.prop(self, 'export_uvs')
             body.prop(self, 'export_normals')
             body.prop(self, 'export_tangents')
+            body.prop(self, 'export_colors')
         header, body = layout.panel('SF3_export_material', default_closed=False)
         header.label(text='Material')
         if body:
