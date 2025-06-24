@@ -2,6 +2,8 @@ import bpy
 import os
 from bpy.types import Operator
 from bpy_extras.io_utils import ExportHelper
+from .sf3.sf3_model import Sf3Model
+from .sf3.kaitaistruct import KaitaiStream
 
 def node_input(node, input):
     if 0 < len(node.inputs[input].links):
@@ -30,13 +32,12 @@ def zup2yup(x):
         x[i+2] = -y
     return x
 
-def flatten_vertex_attributes(vertex_attributes):
+def flatten_vertex_attributes(vertex_attributes, vert_count):
     vertices = []
     # First attribute is always positions, so triplets
-    vert_count = len(vertex_attributes[0])/3
     for i in range(vert_count):
         for a in vertex_attributes:
-            stride = len(a)/vert_count
+            stride = len(a)//vert_count
             for v in range(i*stride, (i+1)*stride):
                 vertices.append(a[v])
     return vertices
@@ -50,19 +51,20 @@ def export_model(file, obj, config):
     mesh = obj.data
     mesh.calc_loop_triangles()
     vertex_attributes = []
+    textures = []
 
     ## We first duplicate every vertex for every face.
     indices = [0] * (len(mesh.loop_triangles)*3)
     mesh.loop_triangles.foreach_get('loops', indices)
-    vertex_attributes.append(zup2yup(indices))
     vertices = [0.0] * (len(indices)*3)
-    for v in indices:
-        vertex = mesh.vertices[v].co
-        faces.append(len(vertices)/3)
+    for i in indices:
+        vertex = mesh.vertices[mesh.loops[i].vertex_index].co
+        faces.append(len(vertices)//3)
         vertices.append(vertex[0])
         vertices.append(vertex[1])
         vertices.append(vertex[2])
     vertices = zup2yup(vertices)
+    vertex_attributes.append(vertices)
 
     if 0 < len(mesh.uv_layers):
         vertex_type = vertex_type | 2
@@ -87,7 +89,7 @@ def export_model(file, obj, config):
 
     ## TODO: deduplicate vertices
 
-    vertices = flatten_vrtex_attributes(vertex_attributes)
+    vertices = flatten_vertex_attributes(vertex_attributes, len(indices))
 
     if 0 < len(obj.data.materials):
         def try_add(tex_node, bit):
@@ -124,13 +126,6 @@ def export_model(file, obj, config):
         if 0 == material_type & 0b111100:
             try_add(node_input(bsdf, 'Specular Tint'), 'specular', 64)
         try_add(node_input(bsdf, 'Emission Color'), 'emissive', 128)
-
-    # Re-wrap textures in String2
-    for i in range(0, len(textures)):
-        str = Sf3Model.String2()
-        str.value = textures[i]
-        str.len = len(str.value.encode('utf-8'))+1
-        textures[i] = str
     
     # Kaitai serialization is really.... really.... annoyingly cumbersome
     model = Sf3Model()
@@ -138,23 +133,29 @@ def export_model(file, obj, config):
     model.format_id = b"\x05"
     model.checksum = 0
     model.null_terminator = b"\x00"
-    mod = model.model = Sf3Model.Model()
-    mod.format = Sf3Model.VertexFormat()
+    mod = model.model = Sf3Model.Model(_parent=model, _root=model)
+    mod.format = Sf3Model.VertexFormat(_parent=mod, _root=model)
     mod.format.raw = vertex_type
-    mod.material_type = Sf3Model.MaterialType()
+    mod.material_type = Sf3Model.MaterialType(_parent=mod, _root=model)
     mod.material_type.raw = material_type
     mod.material_size = sum([str.len+2 for str in textures])
     mod.material = Sf3Model.Material()
+    # Re-wrap textures in String2
+    for i in range(0, len(textures)):
+        str = Sf3Model.String2(_parent=mod.material, _root=model)
+        str.value = textures[i]
+        str.len = len(str.value.encode('utf-8'))+1
+        textures[i] = str
     mod.material.textures = textures
-    mod.vertex_data = Sf3Model.VertexData()
+    mod.vertex_data = Sf3Model.VertexData(_parent=mod, _root=model)
     mod.vertex_data.face_count = len(faces)
     mod.vertex_data.faces = faces
     mod.vertex_data.vertex_count = len(vertices)
     mod.vertex_data.vertices = vertices
     model._check()
-    with open(file, 'wb') as stream:
-        with KaitaiStream(stream) as _io:
-            model._write(_io)
+    f = open(file, 'wb')
+    with KaitaiStream(f) as _io:
+        model._write(_io)
     return {'FINISHED'}
 
 class ExportSF3(Operator, ExportHelper):

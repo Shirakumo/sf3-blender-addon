@@ -136,30 +136,9 @@ class KaitaiStream(object):
         return self._io.tell() + (1 if self.bits_write_mode and self.bits_left > 0 else 0)
 
     def size(self):
-        # Python has no internal File object API function to get
-        # current file / StringIO size, thus we use the following
-        # trick.
-        io = self._io
-        # Remember our current position
-        cur_pos = io.tell()
-        # Seek to the end of the stream and remember the full length
-        full_size = io.seek(0, SEEK_END)
-
-        if full_size is None:
-            # In Python 2, the seek() method of 'file' objects (created by the
-            # built-in open() function) has no return value, so we have to call
-            # tell() ourselves to get the new absolute position - see
-            # <https://github.com/kaitai-io/kaitai_struct_python_runtime/issues/72>.
-            #
-            # In Python 3, seek() methods of all
-            # <https://docs.python.org/3/library/io.html> streams return the new
-            # position already, so this won't be needed once we drop support for
-            # Python 2.
-            full_size = io.tell()
-
-        # Seek back to the current position
-        io.seek(cur_pos)
-        return full_size
+        ## MOD: we only care about exporting to streams, so we don't care about
+        ##      the size. Just fucking write the god darn file, man.
+        return 1000000000000000000
 
     # endregion
 
