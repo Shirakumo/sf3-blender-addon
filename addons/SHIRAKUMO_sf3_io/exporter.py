@@ -81,12 +81,12 @@ def export_model(file, obj, config):
     vertices = zup2yup(vertices)
     vertex_attributes.append(vertices)
 
-    if 0 < len(mesh.uv_layers):
+    if 0 < len(mesh.uv_layers) and config['export_uvs']:
         vertex_type = vertex_type | 2
         uvs = [0.0] * (len(mesh.loops)*2)
         mesh.uv_layers[0].uv.foreach_get('vector', uvs)
         vertex_attributes.append(uvs)
-    if 0 < len(mesh.color_attributes):
+    if 0 < len(mesh.color_attributes) and config['export_colors']:
         vertex_type = vertex_type | 4
         colors = [0.0] * (len(mesh.loops)*3)
         mesh.color_attributes[0].data.foreach_get('color', colors)
@@ -196,6 +196,16 @@ class ExportSF3(Operator, ExportHelper):
         description='The quality of the image for compressed formats',
         default=80, min=1, max=100,
     )
+    export_uvs: bpy.props.BoolProperty(
+        name='Export UVs',
+        description='Whether to export UV maps (if existing)',
+        default=True,
+    )
+    export_colors: bpy.props.BoolProperty(
+        name='Export Colors',
+        description='Whether to color attributes (if existing)',
+        default=True,
+    )
     export_normals: bpy.props.BoolProperty(
         name='Export Normals',
         description='Whether to export normal vectors',
@@ -233,6 +243,8 @@ class ExportSF3(Operator, ExportHelper):
             'filepath': self.filepath,
             'image_type': self.image_type,
             'image_quality': self.image_quality,
+            'export_uvs': self.export_uvs,
+            'export_colors': self.export_colors,
             'export_normals': self.export_normals,
             'export_tangents': self.export_tangents,
         }
