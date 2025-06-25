@@ -3,6 +3,8 @@ import os
 from bpy.types import Operator
 from bpy_extras.io_utils import ExportHelper
 from .sf3.sf3_model import Sf3Model
+from .sf3.sf3_archive import Sf3Archive
+from .sf3.sf3_image import Sf3Image
 from .sf3.kaitaistruct import KaitaiStream
 
 def node_input(node, input):
@@ -10,9 +12,11 @@ def node_input(node, input):
         return node.inputs[input].links[0].from_node
     return None
 
-def save_image(file, src_image, config):
+def save_image(file, src_image, config={}, storage=None):
     if config.image_type == 'None':
         return file
+    if config.image_type == 'SF3':
+        return export_image(file, src_image, config, storage)
     image = src_image.copy()
     image.update()
     image.scale(*src_image.size)
@@ -57,7 +61,10 @@ def deduplicate_vertices(vertices, stride):
         out_indices.append(index)
     return (out_vertices, out_indices)
 
-def export_model(file, obj, config):
+def export_image(file, image, config={}, storage=None):
+    pass
+
+def export_model(file, obj, config={}, storage=None):
     print("Exporting to "+file)
     dir = os.path.dirname(file)
     faces = []
@@ -113,7 +120,7 @@ def export_model(file, obj, config):
     if 0 < len(obj.data.materials):
         def try_add(tex_node, bit):
             if tex_node is not None:
-                tex = save_image(os.path.join(dir, name), tex_node.image, config)
+                tex = save_image(os.path.join(dir, name), tex_node.image, config, storage)
                 if tex:
                     material_type = material_type | bit
                     textures.append(tex)
@@ -187,6 +194,7 @@ class ExportSF3(Operator, ExportHelper):
     image_type: bpy.props.EnumProperty(
         name='Images',
         items=(('AUTO', 'Automatic', 'Save images in their original format, or PNG'),
+               ('SF3', 'SF3 Format', 'Save images as lossless, uncompressed SF3 images'),
                ('PNG', 'PNG Format', 'Save images as lossless PNGs'),
                ('BMP', 'BitMaP Format', 'Save images as lossless, uncompressed BMPs'),
                ('TGA', 'Targa Format', 'Save images as lossless, uncompressed TGAs'),
@@ -200,6 +208,11 @@ class ExportSF3(Operator, ExportHelper):
         name='Image Quality',
         description='The quality of the image for compressed formats',
         default=80, min=1, max=100,
+    )
+    export_archive: bpy.props.BoolProperty(
+        name='Export as Archive',
+        description='Whether to export as a bundled archive. If false, exports as one or more SF3 files and image files.',
+        default=True,
     )
     export_uvs: bpy.props.BoolProperty(
         name='Export UVs',
@@ -226,6 +239,7 @@ class ExportSF3(Operator, ExportHelper):
         layout = self.layout
         layout.use_property_split = True
         layout.use_property_decorate = False
+        body.prop(self, 'export_archive')
         header, body = layout.panel('SF3_export_data', default_closed=False)
         header.label(text='Data')
         if body:
@@ -248,6 +262,7 @@ class ExportSF3(Operator, ExportHelper):
     def export_sf3(self, context):
         config = {
             'filepath': self.filepath,
+            'export_archive': self.export_archive,
             'image_type': self.image_type,
             'image_quality': self.image_quality,
             'export_uvs': self.export_uvs,
