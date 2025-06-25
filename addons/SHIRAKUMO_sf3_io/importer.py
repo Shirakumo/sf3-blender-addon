@@ -70,14 +70,92 @@ def import_image(file, config={}):
         raise Exception("Unsupported image channel layout: "+image.channel_format)
     if image.format in [34]:
         raise Exception("Unsupported image pixel format: "+image.format)
+    if 1 < image.depth:
+        raise Exception("Images with depth are not supported.")
 
     img = bpy.data.images.new(file, image.width, image.height,
                               alpha=(image.channel_format & 4 == 4 or image.channel_format & 2 == 2),
                               float_buffer=(image.format & 32 == 32))
-    pixels = [0.0] * (image.width * image.height * image.channels)
-    for p in range(0, image.width * image.height):
-        pass
-    img.pixels = pixels
+    
+    scalar = 1
+    if image.format & 1 == 1:
+        scalar = 127
+    elif image.format & 2 == 2:
+        scalar = 32767
+    elif image.format & 4 == 4:
+        scalar = 2147483647
+    elif image.format & 8 == 8:
+        scalar = 9223372036854775807
+    if image.format & 16 == 16:
+        scalar = (scalar+1) * 2 - 1
+    elif image.format & 32 == 32:
+        scalar = 1
+
+    src = img.samples
+    dst = [0.0] * (img.width * img.height * img.channels)
+
+    def from_1(i):
+        i = i*1
+        r = dst[i+0] / scalar
+        return (r,r,r,1.0)
+    def from_2(i):
+        i = i*2
+        r = dst[i+0] / scalar
+        a = dst[i+1] / scalar
+        return (r,r,r,a)
+    def from_3(i):
+        i = i*3
+        r = dst[i+0] / scalar
+        g = dst[i+1] / scalar
+        b = dst[i+2] / scalar
+        return (r,g,b,1.0)
+    def from_4(i):
+        i = i*4
+        r = dst[i+0] / scalar
+        g = dst[i+1] / scalar
+        b = dst[i+2] / scalar
+        a = dst[i+3] / scalar
+        return (r,g,b,a)
+
+    def to_1(i,r,g,b,a):
+        i = i*1
+        dst[i+0] = r
+    def to_2(i,r,g,b,a):
+        i = i*2
+        dst[i+0] = r
+        dst[i+1] = a
+    def to_3(i,r,g,b,a):
+        i = i*3
+        dst[i+0] = r
+        dst[i+1] = g
+        dst[i+2] = b
+    def to_4(i,r,g,b,a):
+        i = i*4
+        dst[i+0] = r
+        dst[i+1] = g
+        dst[i+2] = b
+        dst[i+3] = a
+
+    dst_enc = to_1
+    if img.channels == 2:
+        dst_enc = to_2
+    if img.channels == 3:
+        dst_enc = to_3
+    if img.channels == 4:
+        dst_enc = to_4
+    src_dec = from_1
+    if image.channel_format & 0xF == 2:
+        src_dec = from_2
+    if image.channel_format & 0xF == 3:
+        src_dec = from_3
+    if image.channel_format & 0xF == 4:
+        src_dec = from_4
+
+    for i in range(0, image.width * image.height):
+        (r,g,b,a) = src_dec(i)
+        dst_enc(i,r,g,b,a)
+
+    img.pixels = dst
     return img
 
 def import_archive(file, config={}):
