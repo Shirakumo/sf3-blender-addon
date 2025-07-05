@@ -61,11 +61,116 @@ def deduplicate_vertices(vertices, stride):
         out_indices.append(index)
     return (out_vertices, out_indices)
 
-def export_image(file, image, config={}, storage=None):
-    pass
+def export_image(file, img, config={}, storage=None):
+    print("Exporting image to "+file)
+    image = Sf3Image()
+    image.magic = b"\x81\x53\x46\x33\x00\xE0\xD0\x0D\x0A\x0A"
+    image.format_id = b"\x03"
+    image.checksum = 0
+    image.null_terminator = b"\x00"
+    i = image.image = Sf3Image.Image(_parent=image, _root=image)
+    i.width = img.size[0]
+    i.heigh = img.size[1]
+    i.depth = 1
+    i.format = Sf3Image.Formats.uint8
+
+    if(img.depth == 8):
+        i.channel_format = Sf3Image.Layouts.v
+    elif(img.depth == 16):
+        i.channel_format = Sf3Image.Layouts.va
+    elif(img.channels == 24):
+        i.channel_format = Sf3Image.Layouts.rgb
+    elif(img.channels == 32):
+        i.channel_format = Sf3Image.Layouts.rgba
+    elif(img.channels == 64):
+        i.channel_format = Sf3Image.Layouts.va
+        i.format = Sf3Image.Formats.float32
+    elif(img.channels == 96):
+        i.channel_format = Sf3Image.Layouts.rgb
+        i.format = Sf3Image.Formats.float32
+    elif(img.channels == 128):
+        i.channel_format = Sf3Image.Layouts.rgba
+        i.format = Sf3Image.Formats.float32
+
+    src = img.pixels
+    dst = []
+    conv = lambda x: x
+    if image.format & 32 == 32:
+        dst = [0.0] * (i.width * i.height * i.depth)
+    else:
+        dst = [0] * (i.width * i.height * i.depth)
+        conv = lambda x: round(x*255)
+
+    def from_1(i):
+        i = i*1
+        r = conv(src[i+0])
+        return (r,r,r,1.0)
+    def from_2(i):
+        i = i*2
+        r = conv(src[i+0])
+        a = conv(src[i+1])
+        return (r,r,r,a)
+    def from_3(i):
+        i = i*3
+        r = conv(src[i+0])
+        g = conv(src[i+1])
+        b = conv(src[i+2])
+        return (r,g,b,1.0)
+    def from_4(i):
+        i = i*4
+        r = conv(src[i+0])
+        g = conv(src[i+1])
+        b = conv(src[i+2])
+        a = conv(src[i+3])
+        return (r,g,b,a)
+
+    def to_1(i,r,g,b,a):
+        i = i*1
+        dst[i+0] = r
+    def to_2(i,r,g,b,a):
+        i = i*2
+        dst[i+0] = r
+        dst[i+1] = a
+    def to_3(i,r,g,b,a):
+        i = i*3
+        dst[i+0] = r
+        dst[i+1] = g
+        dst[i+2] = b
+    def to_4(i,r,g,b,a):
+        i = i*4
+        dst[i+0] = r
+        dst[i+1] = g
+        dst[i+2] = b
+        dst[i+3] = a
+
+    dst_enc = to_1
+    if img.channel_format & 0xF == 2:
+        dst_enc = to_2
+    if img.channel_format & 0xF == 3:
+        dst_enc = to_3
+    if img.channel_format & 0xF== 4:
+        dst_enc = to_4
+    src_dec = from_1
+    if img.channels == 2:
+        src_dec = from_2
+    if img.channels == 3:
+        src_dec = from_3
+    if img.channels == 4:
+        src_dec = from_4
+
+    for i in range(0, i.width * i.height):
+        (r,g,b,a) = src_dec(i)
+        dst_enc(i,r,g,b,a)
+
+    i.samples = dst
+    image._check()
+    f = open(file, 'wb')
+    with KaitaiStream(f) as _io:
+        image._write(_io)
+    return file
 
 def export_model(file, obj, config={}, storage=None):
-    print("Exporting to "+file)
+    print("Exporting model to "+file)
     dir = os.path.dirname(file)
     faces = []
     vertex_type = 1
@@ -182,7 +287,7 @@ def export_model(file, obj, config={}, storage=None):
     f = open(file, 'wb')
     with KaitaiStream(f) as _io:
         model._write(_io)
-    return {'FINISHED'}
+    return file
 
 class ExportSF3(Operator, ExportHelper):
     bl_idname = 'export_scene.sf3'
