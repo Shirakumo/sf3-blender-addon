@@ -2,7 +2,6 @@ import bpy
 import bmesh
 import os
 import tempfile
-import mimetypes
 import traceback
 from pathlib import Path
 from bpy.types import Operator

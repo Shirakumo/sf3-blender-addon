@@ -1,12 +1,20 @@
 import bpy
 import os
 import binascii
+import tempfile
+import mimetypes
 from bpy.types import Operator
 from bpy_extras.io_utils import ExportHelper
 from .sf3.sf3_model import Sf3Model
 from .sf3.sf3_archive import Sf3Archive
 from .sf3.sf3_image import Sf3Image
 from .sf3.kaitaistruct import KaitaiStream
+
+def message_box(message="", title="SF3", icon='INFO'):
+    def draw(self, context):
+        self.layout.label(text=message)
+
+    bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
 
 def wrap_string(str, instance):
     instance.value = str
@@ -18,11 +26,11 @@ def node_input(node, input):
         return node.inputs[input].links[0].from_node
     return None
 
-def save_image(file, src_image, config={}, storage=None):
+def save_image(file, src_image, config={}):
     if config.image_type == 'None':
-        return file
+        return None
     if config.image_type == 'SF3':
-        return export_image(file, src_image, config, storage)
+        return export_image(file, src_image, config)
     image = src_image.copy()
     image.update()
     image.scale(*src_image.size)
@@ -34,6 +42,7 @@ def save_image(file, src_image, config={}, storage=None):
     else:
         image.save()
     bpy.data.images.remove(image, do_unlink=True)
+    return file
 
 def zup2yup(x):
     for i in range(0, len(x), 3):
@@ -53,7 +62,6 @@ def flatten_vertex_attributes(vertex_attributes, vert_count):
     return vertices
 
 def deduplicate_vertices(vertices, stride):
-    print(stride)
     set = {}
     out_indices = []
     out_vertices = []
@@ -67,33 +75,54 @@ def deduplicate_vertices(vertices, stride):
         out_indices.append(index)
     return (out_vertices, out_indices)
 
-def export_archive(file, files, config={}, storage=None):
+def export_file(file, objects, config={}):
+    if config['export_archive']:
+        with tempfile.TemporaryDirectory() as dir:
+            files = []
+            for obj in objects:
+                path = obj.name+".mod.sf3"
+                subs = export_model(os.path.join(dir, path), obj, config)
+                files.append({'file': subs[0], 'path': path, 'mime': "model/x.sf3"})
+                for i in range(1, len(subs)):
+                    f = subs[i]
+                    mime = "image/x.sf3"
+                    if os.path.splitext(f)[1] != "sf3":
+                        mime = mimetypes.guess_file_type(f)
+                    files.append({'file': f, 'path': os.path.relpath(f, dir), 'mime': mime})
+            return export_archive(file, files, config)
+    elif len(objects) == 1:
+        return export_model(file, objects[0], config)
+    else:
+        base = os.path.dirname(file)
+        return [ export_model(os.path.join(base, obj.name)+".mod.sf3", obj, config) for obj in objects ]
+
+def export_archive(file, files, config={}):
     print("Exporting archive to "+file)
     archive = Sf3Archive()
     archive.magic = b"\x81\x53\x46\x33\x00\xE0\xD0\x0D\x0A\x0A"
     archive.format_id = b"\x01"
     archive.checksum = 0
     archive.null_terminator = b"\x00"
-    ar = Sf3Archive.Archive(_parent=archive, _root=archive)
+    ar = archive.archive = Sf3Archive.Archive(_parent=archive, _root=archive)
     ar.entry_count = len(files)
     ar.meta_size = 0
     ar.meta_entry_offsets = []
-    ar.entries = []
+    ar.meta_entries = []
     ar.file_offsets = []
     ar.file_payloads = []
     file_sizes = 0
     for i in range(0,len(files)):
-        buf = open(files[i].file,'rb').read()
+        buf = open(files[i]['file'],'rb').read()
         entry = Sf3Archive.MetaEntry(_parent=ar, _root=archive)
         entry.checksum = binascii.crc32(buf) & 0xFFFFFFFF
-        entry.mod_time = os.path.getmtime(files[i].file)
-        entry.mime = wrap_string(files[i].mime, Sf3Archive.String1(_parent=entry, _root=archive))
-        entry.path = wrap_string(files[i].path, Sf3Archive.String2(_parent=entry, _root=archive))
+        entry.mod_time = round(os.path.getmtime(files[i]['file']))
+        entry.mime = wrap_string(files[i]['mime'], Sf3Archive.String1(_parent=entry, _root=archive))
+        entry.path = wrap_string(files[i]['path'], Sf3Archive.String2(_parent=entry, _root=archive))
         payload = Sf3Archive.File(_parent=ar, _root=archive)
         payload.length = len(buf)
         payload.payload = buf
         entry_size = 8+4+entry.mime.len+1+entry.path.len+2
-        ar.entries.append(entry)
+        ar.meta_entries.append(entry)
         ar.meta_entry_offsets.append(ar.meta_size)
         ar.meta_size += entry_size
         ar.file_offsets.append(file_sizes)
@@ -106,7 +135,7 @@ def export_archive(file, files, config={}, storage=None):
         archive._write(_io)
     return file
 
-def export_image(file, img, config={}, storage=None):
+def export_image(file, img, config={}):
     print("Exporting image to "+file)
     image = Sf3Image()
     image.magic = b"\x81\x53\x46\x33\x00\xE0\xD0\x0D\x0A\x0A"
@@ -214,7 +243,7 @@ def export_image(file, img, config={}, storage=None):
         image._write(_io)
     return file
 
-def export_model(file, obj, config={}, storage=None):
+def export_model(file, obj, config={}):
     print("Exporting model to "+file)
     dir = os.path.dirname(file)
     faces = []
@@ -270,7 +299,7 @@ def export_model(file, obj, config={}, storage=None):
     if 0 < len(obj.data.materials):
         def try_add(tex_node, bit):
             if tex_node is not None:
-                tex = save_image(os.path.join(dir, name), tex_node.image, config, storage)
+                tex = save_image(os.path.join(dir, name), tex_node.image, config)
                 if tex:
                     material_type = material_type | bit
                     textures.append(tex)
@@ -314,12 +343,9 @@ def export_model(file, obj, config={}, storage=None):
     mod.format.raw = vertex_type
     mod.material_type = Sf3Model.MaterialType(_parent=mod, _root=model)
     mod.material_type.raw = material_type
-    mod.material_size = sum([str.len+2 for str in textures])
     mod.material = Sf3Model.Material()
-    # Re-wrap textures in String2
-    for i in range(0, len(textures)):
-        textures[i] = wrap_string(textures[i], Sf3Model.String2(_parent=mod.material, _root=model))
-    mod.material.textures = textures
+    mod.material.textures = [ wrap_string(tex, Sf3Model.String2(_parent=mod.material, _root=model)) for tex in textures ]
+    mod.material_size = sum([str.len+2 for str in mod.material.textures])
     mod.vertex_data = Sf3Model.VertexData(_parent=mod, _root=model)
     mod.vertex_data.face_count = len(faces)
     mod.vertex_data.faces = faces
@@ -329,7 +355,7 @@ def export_model(file, obj, config={}, storage=None):
     f = open(file, 'wb')
     with KaitaiStream(f) as _io:
         model._write(_io)
-    return file
+    return [ file, *textures ]
 
 class ExportSF3(Operator, ExportHelper):
     bl_idname = 'export_scene.sf3'
@@ -361,6 +387,14 @@ class ExportSF3(Operator, ExportHelper):
         description='Whether to export as a bundled archive. If false, exports as one or more SF3 files and image files.',
         default=True,
     )
+    export_selection: bpy.props.EnumProperty(
+        name='Export',
+        items=(('ACTIVE', 'Active Object', 'Export only the active object'),
+               ('SELECTED', 'Selected Objects', 'Export all selected objects'),
+               ('ALL', 'All Objects', 'Export all objects in the file')),
+        description='What to export',
+        default='SELECTED',
+    )
     export_uvs: bpy.props.BoolProperty(
         name='Export UVs',
         description='Whether to export UV maps (if existing)',
@@ -386,7 +420,11 @@ class ExportSF3(Operator, ExportHelper):
         layout = self.layout
         layout.use_property_split = True
         layout.use_property_decorate = False
-        body.prop(self, 'export_archive')
+        header, body = layout.panel('SF3_export_contents', default_closed=False)
+        header.label(text='Contents')
+        if body:
+            body.prop(self, 'export_selection')
+            body.prop(self, 'export_archive')
         header, body = layout.panel('SF3_export_data', default_closed=False)
         header.label(text='Data')
         if body:
@@ -409,6 +447,7 @@ class ExportSF3(Operator, ExportHelper):
     def export_sf3(self, context):
         config = {
             'filepath': self.filepath,
+            'export_selection': self.export_selection,
             'export_archive': self.export_archive,
             'image_type': self.image_type,
             'image_quality': self.image_quality,
@@ -417,7 +456,19 @@ class ExportSF3(Operator, ExportHelper):
             'export_normals': self.export_normals,
             'export_tangents': self.export_tangents,
         }
-        return export_model(self.filepath, context.object, config)
+        objects = []
+        if self.export_selection == 'ACTIVE':
+            objects = [context.object]
+        elif self.export_selection == 'SELECTED':
+            objects = context.selected_objects
+        elif self.export_selection == 'ALL':
+            objects = [obj for obj in bpy.data.objects]
+        objects = [obj for obj in objects if obj.type == 'MESH']
+        if len(objects) == 0:
+            message_box('Empty selection of objects -- nothing to export.')
+            return {'CANCELLED'}
+        export_file(self.filepath, context.selected_objects, config)
+        return {'FINISHED'}
 
 def menu_func_export(self, context):
     self.layout.operator(ExportSF3.bl_idname, text='Simple File Format Family (.sf3)')
