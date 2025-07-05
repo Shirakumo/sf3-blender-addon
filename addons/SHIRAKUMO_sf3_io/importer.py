@@ -103,25 +103,25 @@ def import_image(file, config={}):
 
     def from_1(i):
         i = i*1
-        r = dst[i+0] / scalar
+        r = src[i+0] / scalar
         return (r,r,r,1.0)
     def from_2(i):
         i = i*2
-        r = dst[i+0] / scalar
-        a = dst[i+1] / scalar
+        r = src[i+0] / scalar
+        a = src[i+1] / scalar
         return (r,r,r,a)
     def from_3(i):
         i = i*3
-        r = dst[i+0] / scalar
-        g = dst[i+1] / scalar
-        b = dst[i+2] / scalar
+        r = src[i+0] / scalar
+        g = src[i+1] / scalar
+        b = src[i+2] / scalar
         return (r,g,b,1.0)
     def from_4(i):
         i = i*4
-        r = dst[i+0] / scalar
-        g = dst[i+1] / scalar
-        b = dst[i+2] / scalar
-        a = dst[i+3] / scalar
+        r = src[i+0] / scalar
+        g = src[i+1] / scalar
+        b = src[i+2] / scalar
+        a = src[i+3] / scalar
         return (r,g,b,a)
 
     def to_1(i,r,g,b,a):
@@ -163,6 +163,7 @@ def import_image(file, config={}):
         dst_enc(i,r,g,b,a)
 
     img.pixels = dst
+    img.update()
     return img
 
 def import_archive(file, config={}):
