@@ -10,6 +10,12 @@ from .sf3.sf3_model import Sf3Model
 from .sf3.sf3_archive import Sf3Archive
 from .sf3.sf3_image import Sf3Image
 
+def message_box(message="", title="SF3", icon='INFO'):
+    def draw(self, context):
+        self.layout.label(text=message)
+
+    bpy.context.window_manager.popup_menu(draw, title=title, icon=icon)
+
 def path_index(path, archive):
     for i in range(0, len(archive.meta_entries)):
         if path == archive.meta_entries[i].path.value:
@@ -28,6 +34,8 @@ def archive_file(file, archive):
 
 def import_file(file, config={}, source=None):
     if source is None:
+        if not os.path.isfile(file):
+            raise Exception("File does not exist: "+file)
         try:
             return import_archive(file, config)
         except:
@@ -223,7 +231,13 @@ def import_model(file, config={}, name=None, source=None):
         offset = 0
         def load_texture(texname):
             texpath = os.path.join(dir, mod.material.textures[offset].value)
-            img = import_image(texpath, config, source)
+            img = None
+            try:
+                img = import_file(texpath, config, source)
+            except Exception as e:
+                print(e)
+                message_box("Failed to load texture "+texpath)
+                img = bpy.data.images.new(texpath, 1, 1)
             tex = mat.node_tree.nodes.new('ShaderNodeTexImage')
             tex.image = img
             return tex

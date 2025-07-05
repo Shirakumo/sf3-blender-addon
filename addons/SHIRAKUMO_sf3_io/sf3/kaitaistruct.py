@@ -41,7 +41,9 @@ class KaitaiStruct(object):
     def from_file(cls, filename):
         f = open(filename, 'rb')
         try:
-            return cls(KaitaiStream(f))
+            inst = cls(KaitaiStream(f))
+            inst._read()
+            return inst
         except Exception:
             # close file descriptor, then reraise the exception
             f.close()
