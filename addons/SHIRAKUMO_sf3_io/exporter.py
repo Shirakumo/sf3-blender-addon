@@ -1,11 +1,17 @@
 import bpy
 import os
+import binascii
 from bpy.types import Operator
 from bpy_extras.io_utils import ExportHelper
 from .sf3.sf3_model import Sf3Model
 from .sf3.sf3_archive import Sf3Archive
 from .sf3.sf3_image import Sf3Image
 from .sf3.kaitaistruct import KaitaiStream
+
+def wrap_string(str, instance):
+    instance.value = str
+    instance.len = len(str.encode('utf-8'))+1
+    return instance
 
 def node_input(node, input):
     if 0 < len(node.inputs[input].links):
@@ -60,6 +66,45 @@ def deduplicate_vertices(vertices, stride):
             out_vertices.extend(vertex)
         out_indices.append(index)
     return (out_vertices, out_indices)
+
+def export_archive(file, files, config={}, storage=None):
+    print("Exporting archive to "+file)
+    archive = Sf3Archive()
+    archive.magic = b"\x81\x53\x46\x33\x00\xE0\xD0\x0D\x0A\x0A"
+    archive.format_id = b"\x01"
+    archive.checksum = 0
+    archive.null_terminator = b"\x00"
+    ar = Sf3Archive.Archive(_parent=archive, _root=archive)
+    ar.entry_count = len(files)
+    ar.meta_size = 0
+    ar.meta_entry_offsets = []
+    ar.entries = []
+    ar.file_offsets = []
+    ar.file_payloads = []
+    file_sizes = 0
+    for i in range(0,len(files)):
+        buf = open(files[i].file,'rb').read()
+        entry = Sf3Archive.MetaEntry(_parent=ar, _root=archive)
+        entry.checksum = binascii.crc32(buf) & 0xFFFFFFFF
+        entry.mod_time = os.path.getmtime(files[i].file)
+        entry.mime = wrap_string(files[i].mime, Sf3Archive.String1(_parent=entry, _root=archive))
+        entry.path = wrap_string(files[i].path, Sf3Archive.String2(_parent=entry, _root=archive))
+        payload = Sf3Archive.File(_parent=ar, _root=archive)
+        payload.length = len(buf)
+        payload.payload = buf
+        entry_size = 8+4+entry.mime.len+1+entry.path.len+2
+        ar.entries.append(entry)
+        ar.meta_entry_offsets.append(ar.meta_size)
+        ar.meta_size += entry_size
+        ar.file_offsets.append(file_sizes)
+        ar.file_payloads.append(payload)
+        file_sizes += len(buf)+8
+
+    archive._check()
+    f = open(file, 'wb')
+    with KaitaiStream(f) as _io:
+        archive._write(_io)
+    return file
 
 def export_image(file, img, config={}, storage=None):
     print("Exporting image to "+file)
@@ -273,10 +318,7 @@ def export_model(file, obj, config={}, storage=None):
     mod.material = Sf3Model.Material()
     # Re-wrap textures in String2
     for i in range(0, len(textures)):
-        str = Sf3Model.String2(_parent=mod.material, _root=model)
-        str.value = textures[i]
-        str.len = len(str.value.encode('utf-8'))+1
-        textures[i] = str
+        textures[i] = wrap_string(textures[i], Sf3Model.String2(_parent=mod.material, _root=model))
     mod.material.textures = textures
     mod.vertex_data = Sf3Model.VertexData(_parent=mod, _root=model)
     mod.vertex_data.face_count = len(faces)
