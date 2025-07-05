@@ -115,7 +115,7 @@ class Sf3Archive(ReadWriteKaitaiStruct):
 
         def _read(self):
             self.len = self._io.read_u1()
-            self.value = (self._io.read_bytes(self.len)).decode("UTF-8")
+            self.value = (KaitaiStream.bytes_terminate(self._io.read_bytes(self.len), 0, False)).decode("UTF-8")
 
 
         def _fetch_instances(self):
@@ -125,13 +125,15 @@ class Sf3Archive(ReadWriteKaitaiStruct):
         def _write__seq(self, io=None):
             super(Sf3Archive.String1, self)._write__seq(io)
             self._io.write_u1(self.len)
-            self._io.write_bytes((self.value).encode(u"UTF-8"))
+            self._io.write_bytes_limit((self.value).encode(u"UTF-8"), self.len, 0, 0)
 
 
         def _check(self):
             pass
-            if (len((self.value).encode(u"UTF-8")) != self.len):
+            if (len((self.value).encode(u"UTF-8")) > self.len):
                 raise kaitaistruct.ConsistencyError(u"value", len((self.value).encode(u"UTF-8")), self.len)
+            if (KaitaiStream.byte_array_index_of((self.value).encode(u"UTF-8"), 0) != -1):
+                raise kaitaistruct.ConsistencyError(u"value", KaitaiStream.byte_array_index_of((self.value).encode(u"UTF-8"), 0), -1)
 
 
     class File(ReadWriteKaitaiStruct):
@@ -169,7 +171,7 @@ class Sf3Archive(ReadWriteKaitaiStruct):
 
         def _read(self):
             self.len = self._io.read_u2le()
-            self.value = (self._io.read_bytes(self.len)).decode("UTF-8")
+            self.value = (KaitaiStream.bytes_terminate(self._io.read_bytes(self.len), 0, False)).decode("UTF-8")
 
 
         def _fetch_instances(self):
@@ -179,13 +181,15 @@ class Sf3Archive(ReadWriteKaitaiStruct):
         def _write__seq(self, io=None):
             super(Sf3Archive.String2, self)._write__seq(io)
             self._io.write_u2le(self.len)
-            self._io.write_bytes((self.value).encode(u"UTF-8"))
+            self._io.write_bytes_limit((self.value).encode(u"UTF-8"), self.len, 0, 0)
 
 
         def _check(self):
             pass
-            if (len((self.value).encode(u"UTF-8")) != self.len):
+            if (len((self.value).encode(u"UTF-8")) > self.len):
                 raise kaitaistruct.ConsistencyError(u"value", len((self.value).encode(u"UTF-8")), self.len)
+            if (KaitaiStream.byte_array_index_of((self.value).encode(u"UTF-8"), 0) != -1):
+                raise kaitaistruct.ConsistencyError(u"value", KaitaiStream.byte_array_index_of((self.value).encode(u"UTF-8"), 0), -1)
 
 
     class Archive(ReadWriteKaitaiStruct):

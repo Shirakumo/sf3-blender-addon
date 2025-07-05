@@ -3,12 +3,14 @@ import bmesh
 import os
 import tempfile
 import mimetypes
+import traceback
 from pathlib import Path
 from bpy.types import Operator
 from bpy_extras.io_utils import ImportHelper
 from .sf3.sf3_model import Sf3Model
 from .sf3.sf3_archive import Sf3Archive
 from .sf3.sf3_image import Sf3Image
+from .sf3 import kaitaistruct
 
 def message_box(message="", title="SF3", icon='INFO'):
     def draw(self, context):
@@ -28,51 +30,48 @@ def archive_file(file, archive):
         i = path_index(file, source)
     if i is None:
         raise Exception("File not found in archive: "+file)
-    return (archive.file_payloads[i].value,
+    return (archive.file_payloads[i].payload,
             archive.meta_entries[i].mime.value,
             archive.meta_entries[i].path.value)
 
 def import_file(file, config={}, source=None):
     if source is None:
+        print("Importing file "+file)
         if not os.path.isfile(file):
             raise Exception("File does not exist: "+file)
         try:
             return import_archive(file, config)
-        except:
+        except kaitaistruct.ValidationNotEqualError:
             pass
         try:
-            return imort_model(file, config)
-        except:
+            return import_model(file, config)
+        except kaitaistruct.ValidationNotEqualError:
             pass
         try:
             return import_image(file, config)
-        except:
+        except kaitaistruct.ValidationNotEqualError:
             pass
         try:
             return bpy.data.images.load(file, check_existing=True)
-        except:
-            pass
+        except Exception:
+            print(traceback.format_exc())
         raise Exception("Failed to import, does not appear to be a valid file: "+file)
     elif isinstance(source, Sf3Archive.Archive):
         (octs, type, file) = archive_file(file, source)
         # We can't load images from octets, so write them to disk... yay.
         # Also this simplifies the parsing logic since everything goes
         # through files.
-        ext = mimetypes.guess_extension(type)
-        if type in ["image/x.sf3", "model/x.sf3", "application/x.sf3-archive"]:
-            ext = ".sf3"
-        elif ext is None:
-            ext = ".dat"
-        with tempfile.NamedTemporaryFile(prefix=os.path.basename(file), suffix=ext) as fp:
-            fp.write(octs)
-            fp.close()
-            return import_file(fp.name, config)
+        with tempfile.TemporaryDirectory() as dir:
+            path = os.path.join(dir,file)
+            with open(path, 'w+b') as fp:
+                fp.write(octs)
+            return import_file(path, config)
     else:
         raise Exception("Unknown source type: "+type(source))
 
 def import_image(file, config={}):
-    print("Importing image "+file)
     image = Sf3Image.from_file(file).image
+    print("Importing image "+file)
 
     if image.channel_format in [68, 84]:
         raise Exception("Unsupported image channel layout: "+image.channel_format)
@@ -167,20 +166,23 @@ def import_image(file, config={}):
     return img
 
 def import_archive(file, config={}):
-    print("Importing archive "+file)
     archive = Sf3Archive.from_file(file).archive
+    print("Importing archive "+file)
     models = []
     for i in range(0, len(archive.meta_entries)):
-        if archive.meta_entries[i].mime.value == ["model/x.sf3"]:
+        mime = archive.meta_entries[i].mime.value
+        file = archive.meta_entries[i].path.value
+        print("{0}: {1} {2}".format(i, file, mime))
+        if mime == "model/x.sf3":
             models.append(import_file(i, config, archive))
     return models
 
 def import_model(file, config={}, name=None, source=None):
-    print("Importing model "+file)
     dir = os.path.dirname(file)
     if name is None:
         name = Path(file).stem
     mod = Sf3Model.from_file(file).model
+    print("Importing model "+file)
     mesh = bpy.data.meshes.new(name)
     obj = bpy.data.objects.new(name, mesh)
     bpy.data.collections["Collection"].objects.link(obj)
@@ -317,7 +319,7 @@ class ImportSF3(Operator, ImportHelper):
             dirname = os.path.dirname(self.filepath)
             for file in self.files:
                 path = os.path.join(dirname, file.name)
-                import_model(path, import_settings)
+                import_file(path, import_settings)
                 ret = {'FINISHED'}
             return ret
         else:
