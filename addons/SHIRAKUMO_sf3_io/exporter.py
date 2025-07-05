@@ -51,14 +51,21 @@ def zup2yup(x):
         x[i+2] = -y
     return x
 
-def flatten_vertex_attributes(vertex_attributes, vert_count):
-    vertices = []
-    # First attribute is always positions, so triplets
-    for i in range(vert_count):
-        for a in vertex_attributes:
-            stride = len(a)//vert_count
-            for v in range(i*stride, (i+1)*stride):
-                vertices.append(a[v])
+def flatten_vertex_attributes(vertex_attributes, lengths):
+    offset = 0
+    stride = sum(lengths)
+    count = len(vertex_attributes[0]) // lengths[0]
+    vertices = [0.0] * (stride*count)
+    for a in range(len(vertex_attributes)):
+        attr = vertex_attributes[a]
+        s = 0
+        o = offset
+        for v in range(count):
+            for i in range(lengths[a]):
+                vertices[o+i] = attr[s]
+                s += 1
+            o += stride
+        offset += lengths[a]
     return vertices
 
 def deduplicate_vertices(vertices, stride):
@@ -257,7 +264,7 @@ def export_model(file, obj, config={}):
     ## We first duplicate every vertex for every face.
     indices = [0] * (len(mesh.loop_triangles)*3)
     mesh.loop_triangles.foreach_get('loops', indices)
-    vertices = [0.0] * (len(indices)*3)
+    vertices = []
     for i in indices:
         vertex = mesh.vertices[mesh.loops[i].vertex_index].co
         faces.append(len(vertices)//3)
@@ -266,35 +273,42 @@ def export_model(file, obj, config={}):
         vertices.append(vertex[2])
     vertices = zup2yup(vertices)
     vertex_attributes.append(vertices)
-    stride = 3
+    lengths = [3]
+
+    def load_attribute(base, count):
+        attr = []
+        for i in indices:
+            vec = base[i].vector
+            for j in range(count):
+                attr.append(vec[j])
+        return attr
 
     if 0 < len(mesh.uv_layers) and config['export_uvs']:
         vertex_type = vertex_type | 2
-        uvs = [0.0] * (len(mesh.loops)*2)
-        mesh.uv_layers[0].uv.foreach_get('vector', uvs)
-        vertex_attributes.append(uvs)
-        stride += 2
+        vertex_attributes.append(load_attribute(mesh.uv_layers[0].uv, 2))
+        lengths.append(2)
     if 0 < len(mesh.color_attributes) and config['export_colors']:
         vertex_type = vertex_type | 4
-        colors = [0.0] * (len(mesh.loops)*3)
-        mesh.color_attributes[0].data.foreach_get('color', colors)
-        vertex_attributes.append(colors)
-        stride += 3
+        vertex_attributes.append(load_attribute(mesh.color_attributes[0].data, 3))
+        lengths.append(3)
     if config['export_normals']:
         vertex_type = vertex_type | 8
-        normals = [0.0] * (len(mesh.loops)*3)
-        mesh.corner_normals.foreach_get('vector', normals)
-        vertex_attributes.append(zup2yup(normals))
-        stride += 3
+        vertex_attributes.append(zup2yup(load_attribute(mesh.corner_normals, 3)))
+        lengths.append(3)
     if config['export_tangents']:
+        mesh.calc_tangents()
         vertex_type = vertex_type | 16
-        tangents = [0.0] * (len(mesh.loops)*3)
-        mesh.loops.foreach_get('tangent', tangents)
+        tangents = []
+        for i in indices:
+            vec = mesh.loops[i].tangent
+            attr.append(vec[0])
+            attr.append(vec[1])
+            attr.append(vec[2])
         vertex_attributes.append(zup2yup(tangents))
-        stride += 3
+        lengths.append(3)
 
-    vertices = flatten_vertex_attributes(vertex_attributes, len(indices))
-    (vertices, indices) = deduplicate_vertices(vertices, stride)
+    vertices = flatten_vertex_attributes(vertex_attributes, lengths)
+    (vertices, faces) = deduplicate_vertices(vertices, sum(lengths))
 
     if 0 < len(obj.data.materials):
         def try_add(tex_node, bit):
