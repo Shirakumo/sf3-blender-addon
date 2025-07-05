@@ -80,7 +80,7 @@ def import_image(file, config={}):
     if 1 < image.depth:
         raise Exception("Images with depth are not supported.")
 
-    img = bpy.data.images.new(file, image.width, image.height,
+    img = bpy.data.images.new(os.path.basename(file), image.width, image.height,
                               alpha=(image.channel_format & 4 == 4 or image.channel_format & 2 == 2),
                               float_buffer=(image.format & 32 == 32))
     
@@ -98,8 +98,8 @@ def import_image(file, config={}):
     elif image.format & 32 == 32:
         scalar = 1
 
-    src = img.samples
-    dst = [0.0] * (img.width * img.height * img.channels)
+    src = image.samples
+    dst = [0.0] * (img.size[0] * img.size[0] * img.channels)
 
     def from_1(i):
         i = i*1
