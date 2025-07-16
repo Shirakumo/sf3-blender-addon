@@ -37,7 +37,7 @@ def save_image(file, src_image, config={}):
     if config.image_type != 'AUTO':
         image.file_format = config.image_type
     image.filepath_raw = file
-    if file_format in ["JPEG", "WEBP"]:
+    if config.image_type in ["JPEG", "WEBP"]:
         image.save(quality=config['image_quality'])
     else:
         image.save()
@@ -301,9 +301,9 @@ def export_model(file, obj, config={}):
         tangents = []
         for i in indices:
             vec = mesh.loops[i].tangent
-            attr.append(vec[0])
-            attr.append(vec[1])
-            attr.append(vec[2])
+            tangents.append(vec[0])
+            tangents.append(vec[1])
+            tangents.append(vec[2])
         vertex_attributes.append(zup2yup(tangents))
         lengths.append(3)
 
@@ -311,7 +311,7 @@ def export_model(file, obj, config={}):
     (vertices, faces) = deduplicate_vertices(vertices, sum(lengths))
 
     if 0 < len(obj.data.materials):
-        def try_add(tex_node, bit):
+        def try_add(tex_node, name, bit):
             if tex_node is not None:
                 tex = save_image(os.path.join(dir, name), tex_node.image, config)
                 if tex:

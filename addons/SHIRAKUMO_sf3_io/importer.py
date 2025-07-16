@@ -1,5 +1,4 @@
 import bpy
-import bmesh
 import os
 import tempfile
 import traceback
@@ -26,7 +25,7 @@ def path_index(path, archive):
 def archive_file(file, archive):
     i = file
     if isinstance(file, str):
-        i = path_index(file, source)
+        i = path_index(file, archive)
     if i is None:
         raise Exception("File not found in archive: "+file)
     return (archive.file_payloads[i].payload,
