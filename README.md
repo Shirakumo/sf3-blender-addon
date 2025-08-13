@@ -1,17 +1,4 @@
-# SF3 Blender Addon
-This is a repository that contains an addon for Blender to support importing and exporting [Simple File Format Family (SF3)](https://shirakumo.org/docs/sf3) models.
+# This repository has [moved](https://shirakumo.org/projects/sf3-blender-addon)!
+Due to Microsoft's continued enshittification of the platform this repository has been moved to [Codeberg](https://shirakumo.org/projects/sf3-blender-addon) in August of 2025. It will not receive further updates or patches. **Issues and pull requests will not be looked at here either**, please submit your patches and issue tickets on Codeberg, or send them directly via good old email patches to [shirakumo@tymoon.eu](mailto:shirakumo@tymoon.eu).
 
-## Installation
-You can [download the latest release](https://shirakumo.org/project/sf3-blender-addon/releases/latest/) of the plugin. The zip file can be imported into Blender just like any other addon.
-
-Activating the ``SHIRAKUMO_sf3_io`` addon should give you new menu entries under ``File > Import`` and ``File > Export`` for importing/exporting SF3 model files.
-
-## Feature Support
-Supports importing and exporting of the following:
-
-- SF3 Model files (``.mod.sf3``)
-  For single mesh and material storage
-- SF3 Image files (``.img.sf3``)
-  For texture storage
-- SF3 Archive files (``.ar.sf3``)
-  To bundle multiple meshes and materials together
+Thanks.
